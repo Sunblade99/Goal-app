@@ -16,6 +16,7 @@ function App() {
   const [showForm, setShowForm] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [editingId, setEditingId] = useState(null)   // which goal is being edited
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -68,7 +69,28 @@ function App() {
     await supabase.auth.signOut()
   }
 
-  async function handleAddGoal() {
+  // Open the popup in "create" mode
+  function openCreateForm() {
+    setEditingId(null)
+    setTitle('')
+    setDeadline('')
+    setWhy('')
+    setMessage('')
+    setShowForm(true)
+  }
+
+  // Open the popup in "edit" mode, pre-filled with this goal's values
+  function openEditForm(goal) {
+    setEditingId(goal.id)
+    setTitle(goal.title)
+    setDeadline(goal.deadline || '')
+    setWhy(goal.why || '')
+    setMessage('')
+    setShowForm(true)
+  }
+
+  // Handles BOTH creating and editing
+  async function handleSaveGoal() {
     setMessage('')
     if (!title) {
       setMessage('Please enter a goal name.')
@@ -78,18 +100,33 @@ function App() {
       setMessage('Deadline cannot be in the past.')
       return
     }
-    const { error } = await supabase.from('goals').insert({
-      user_id: session.user.id,
-      title: title,
-      deadline: deadline || null,
-      why: why
-    })
+
+    let error
+    if (editingId) {
+      // UPDATE an existing goal
+      const res = await supabase
+        .from('goals')
+        .update({ title: title, deadline: deadline || null, why: why })
+        .eq('id', editingId)
+      error = res.error
+    } else {
+      // INSERT a new goal
+      const res = await supabase.from('goals').insert({
+        user_id: session.user.id,
+        title: title,
+        deadline: deadline || null,
+        why: why
+      })
+      error = res.error
+    }
+
     if (error) {
       setMessage('Error: ' + error.message)
     } else {
       setTitle('')
       setDeadline('')
       setWhy('')
+      setEditingId(null)
       setShowForm(false)
       loadGoals()
     }
@@ -163,7 +200,7 @@ function App() {
         <button onClick={handleLogOut}>Log out</button>
       </p>
 
-      <button onClick={() => setShowForm(true)} style={{ padding: '10px 16px', fontSize: 16 }}>
+      <button onClick={openCreateForm} style={{ padding: '10px 16px', fontSize: 16 }}>
         + Add a new goal
       </button>
 
@@ -198,6 +235,12 @@ function App() {
                 <button onClick={() => handleCheckIn(goal.id)}>I worked on it today</button>
               )}
               <button
+                onClick={(e) => { e.stopPropagation(); openEditForm(goal) }}
+                style={{ marginLeft: 8, background: '#2980b9', color: 'white', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}
+              >
+                Edit
+              </button>
+              <button
                 onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(goal.id) }}
                 style={{ marginLeft: 8, color: 'white', background: '#c0392b', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}
               >
@@ -224,7 +267,7 @@ function App() {
               width: 400, maxWidth: '90%'
             }}
           >
-            <h2 style={{ marginTop: 0 }}>Set a new goal</h2>
+            <h2 style={{ marginTop: 0 }}>{editingId ? 'Edit goal' : 'Set a new goal'}</h2>
             <input placeholder="What's your goal?" value={title}
               onChange={(e) => setTitle(e.target.value)} style={{ width: '100%' }} />
             <br /><br />
@@ -240,7 +283,7 @@ function App() {
             <textarea placeholder="Why does this matter to you?" value={why}
               onChange={(e) => setWhy(e.target.value)} style={{ width: '100%', height: 60 }} />
             <br /><br />
-            <button onClick={handleAddGoal}>Add goal</button>{' '}
+            <button onClick={handleSaveGoal}>{editingId ? 'Save changes' : 'Add goal'}</button>{' '}
             <button onClick={() => setShowForm(false)}>Cancel</button>
             <p>{message}</p>
           </div>
